@@ -80,6 +80,7 @@ Append one section per commit. Each section must record the intent, changed area
 - Rewrote `README.md` with cartography-specific build, test, and runtime guidance
 - Verified the root Gradle pipeline now installs frontend dependencies, builds the frontend bundle, syncs assets, and runs Java tests in one pass
 - Recorded the remaining workflow constraint that remote pushes still need explicit user approval in this environment
+- Documented that the current renderer is a deterministic bootstrap path rather than full live world sampling
 
 **Verification**
 

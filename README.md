@@ -10,6 +10,7 @@ Cartography is a NeoForge 1.21.1 mod that exposes a lightweight web map for a ru
 - Dirty chunk to metatile queueing plus ancestor invalidation bookkeeping
 - Marker polling with `markerMode=off` as the default-safe behavior
 - Standalone `frontend/` Vite project that is built into generated mod resources during Gradle runs
+- A deterministic bootstrap renderer is wired end-to-end today; live world block sampling is still the main remaining functional gap
 
 ## Build And Test
 
