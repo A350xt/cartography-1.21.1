@@ -1,0 +1,13 @@
+{
+  "itemGroup.cartography": "Example Mod Tab",
+  "block.cartography.example_block": "Example Block",
+  "item.cartography.example_item": "Example Item",
+
+  "cartography.configuration.title": "Cartography Configs",
+  "cartography.configuration.section.cartography.common.toml": "Cartography Configs",
+  "cartography.configuration.section.cartography.common.toml.title": "Cartography Configs",
+  "cartography.configuration.items": "Item List",
+  "cartography.configuration.logDirtBlock": "Log Dirt Block",
+  "cartography.configuration.magicNumberIntroduction": "Magic Number Text",
+  "cartography.configuration.magicNumber": "Magic Number"
+}
