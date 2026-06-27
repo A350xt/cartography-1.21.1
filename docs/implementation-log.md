@@ -68,3 +68,23 @@ Append one section per commit. Each section must record the intent, changed area
 **Next**
 
 - Refresh the top-level README, run root verification, and record final evidence
+
+## 2026-06-27 - Final verification and docs refresh
+
+**Purpose**
+
+- Replace the template README, verify the integrated build path from the repo root, and capture close-out evidence
+
+**Changes**
+
+- Rewrote `README.md` with cartography-specific build, test, and runtime guidance
+- Verified the root Gradle pipeline now installs frontend dependencies, builds the frontend bundle, syncs assets, and runs Java tests in one pass
+- Recorded the remaining workflow constraint that remote pushes still need explicit user approval in this environment
+
+**Verification**
+
+- `./gradlew test`
+
+**Next**
+
+- Request approval if the branch should be pushed to `origin/feat/neoforge-mvp-bootstrap`

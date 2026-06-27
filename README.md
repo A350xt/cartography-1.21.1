@@ -1,25 +1,45 @@
+# Cartography NeoForge MVP
 
-Installation information
-=======
+Cartography is a NeoForge 1.21.1 mod that exposes a lightweight web map for a running Minecraft server. This MVP focuses on versioned raster tiles, lazy tile generation, a small embedded HTTP API, and a bundled OpenLayers frontend.
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+## MVP Features
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+- Embedded HTTP server for `manifest.json`, tiles, markers, health, and static frontend assets
+- Versioned tile namespace under `tiles/{tilesetVersion}/{dimension}/{z}/{x}/{y}.webp`
+- Shared black pending tile with `Cache-Control: no-store`, `X-Cartography-Tile-State: pending`, and `Retry-After`
+- Dirty chunk to metatile queueing plus ancestor invalidation bookkeeping
+- Marker polling with `markerMode=off` as the default-safe behavior
+- Standalone `frontend/` Vite project that is built into generated mod resources during Gradle runs
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+## Build And Test
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+From the repository root:
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+```powershell
+./gradlew test
+```
+
+This command runs Java tests and also triggers `npm install` plus `npm run build` for the frontend via Gradle resource processing.
+
+For direct frontend iteration:
+
+```powershell
+cd frontend
+npm install
+npx vitest run --reporter verbose
+npm run build
+```
+
+## Runtime Notes
+
+- The embedded HTTP service reads its defaults from `Config.java` / the generated NeoForge common config.
+- Marker publication is disabled by default. Enable it through the `markers.mode` config group if you want player markers.
+- Tile output defaults to `run/cartography/tiles`.
+
+## Key Paths
+
+- Design: `docs/superpowers/specs/2026-06-27-cartography-neoforge-mvp-design.md`
+- Plan: `docs/superpowers/plans/2026-06-27-cartography-neoforge-mvp.md`
+- Root plan copy: `CARTOGRAPHY_MVP_PLAN.md`
+- Workflow: `docs/git-workflow.md`
+- Implementation log: `docs/implementation-log.md`
