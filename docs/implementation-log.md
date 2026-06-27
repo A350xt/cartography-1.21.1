@@ -46,3 +46,25 @@ Append one section per commit. Each section must record the intent, changed area
 **Next**
 
 - Add the Vite/OpenLayers frontend and connect it to the embedded manifest/tile APIs
+
+## 2026-06-27 - Frontend OpenLayers client
+
+**Purpose**
+
+- Ship the MVP browser client that reads `manifest.json`, loads versioned tiles, and polls markers only when enabled
+
+**Changes**
+
+- Added a standalone `frontend/` Vite project with TypeScript, Vitest, and OpenLayers
+- Implemented manifest loading, pending-tile retry logic, and marker polling helpers
+- Added a browser app shell with dimension switching, status feedback, and map rendering
+- Committed the npm lockfile and verified Gradle can build and sync the frontend bundle into generated mod resources
+
+**Verification**
+
+- `npx vitest run --reporter verbose`
+- `npm run build`
+
+**Next**
+
+- Refresh the top-level README, run root verification, and record final evidence
