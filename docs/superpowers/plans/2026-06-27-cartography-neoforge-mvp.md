@@ -96,3 +96,23 @@
 - [ ] Step 4: Update `README.md` with local build/run instructions for the embedded map.
 - [ ] Step 5: Append the final verification evidence to `docs/implementation-log.md`.
 - [ ] Step 6: Commit and push the verification/documentation slice together with implementation-log updates.
+
+### Task 6: Live World Sampling And Vanilla-Style Shading
+
+**Files:**
+- Modify: `src/main/java/com/liedowncraft/cartography/bootstrap/CartographyRuntime.java`
+- Replace: `src/main/java/com/liedowncraft/cartography/render/PatternTileRenderer.java`
+- Create: `src/main/java/com/liedowncraft/cartography/render/**`
+- Create: `src/main/java/com/liedowncraft/cartography/snapshot/**`
+- Modify: `src/main/java/com/liedowncraft/cartography/Cartography.java`
+- Modify: `src/test/java/com/liedowncraft/cartography/**`
+- Modify: `docs/superpowers/specs/2026-06-27-cartography-neoforge-mvp-design.md`
+- Modify: `docs/implementation-log.md`
+- Modify: `README.md`
+
+- [ ] Step 1: Write failing tests for vanilla-style brightness grading, fluid-depth shading, and runtime snapshot-to-render integration.
+- [ ] Step 2: Implement immutable world-column snapshot models plus server-thread snapshot extraction.
+- [ ] Step 3: Replace the placeholder renderer with a vanilla-style renderer driven by snapshot data.
+- [ ] Step 4: Wire the runtime so queued jobs sample on the server thread and rasterize off-thread.
+- [ ] Step 5: Run focused backend tests and full `./gradlew test`.
+- [ ] Step 6: Commit and push the live-sampling slice together with implementation-log and README updates.

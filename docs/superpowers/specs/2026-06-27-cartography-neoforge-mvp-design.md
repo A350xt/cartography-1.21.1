@@ -38,13 +38,13 @@ The mod is split into six subsystems with narrow responsibilities:
 3. `core`
    Implements tile math, dirty chunk accumulation, metatile grouping, ancestor invalidation, and tileset version computation.
 4. `render`
-   Produces raster snapshots for max-zoom tiles and slices metatiles into 256px leaf tiles.
+   Consumes immutable world-column snapshots captured on the server thread and produces vanilla-style raster tiles for max zoom.
 5. `storage`
    Persists tiles in `/tiles/{tilesetVersion}/{dimension}/{z}/{x}/{y}.webp` and serves cached bytes.
 6. `web`
    Serves the frontend, manifest, markers, health, and tile endpoints.
 
-The runtime performs world observation on the game side, queues rendering work off-thread, and writes tile files to disk. HTTP requests never render inline; they either return a cached tile or the shared pending tile and enqueue work.
+The runtime performs world observation on the game side, captures immutable column snapshots on the server thread, queues image rendering off-thread, and writes tile files to disk. HTTP requests never render inline; they either return a cached tile or the shared pending tile and enqueue work.
 
 ## Pending Tile Contract
 
@@ -60,8 +60,33 @@ The runtime performs world observation on the game side, queues rendering work o
 - Dirty world updates are first normalized to chunk coordinates.
 - Dirty chunks are mapped to max-zoom tiles.
 - Max-zoom tiles are grouped into metatile jobs.
+- Before a queued metatile is rasterized, the server thread captures a world snapshot for the exact covered block rectangle.
 - After a metatile render completes, ancestor coordinates are marked stale so lower zooms can be refreshed lazily.
 - The scheduler respects a TPS floor and pauses dequeuing when server performance is below the configured threshold.
+
+## Live Sampling Model
+
+- Background workers must not read `ServerLevel`, `LevelChunk`, `BlockState`, or other mutable world objects directly.
+- Each metatile render starts by requesting a server-thread snapshot for the target dimension and block rectangle.
+- The snapshot stores immutable per-column data:
+  - sampled surface height
+  - chosen visible block/fluid map color
+  - fluid depth information when water-like columns are present
+  - enough neighboring height continuity to reproduce vanilla-style brightness grading
+- If a required chunk is not available for snapshot extraction, the job is allowed to stay pending rather than inventing colors from missing data.
+
+## Vanilla-Style Shading
+
+- Sampling and shading follow the structure of `MapItem.update(...)` rather than the old deterministic placeholder renderer.
+- For non-ceiling dimensions:
+  - find the top visible surface using `WORLD_SURFACE`
+  - descend past `MapColor.NONE` blocks
+  - treat exposed fluids similarly to vanilla by converting to the visible fluid block where appropriate
+  - aggregate map colors over the sampling footprint
+  - compute brightness from neighboring average heights
+- For fluid-heavy columns:
+  - derive brightness from fluid depth with the same qualitative branch structure as vanilla water shading
+- The nether ceiling case remains supported with a deterministic fallback similar to vanilla’s ceiling behavior.
 
 ## HTTP Contract
 

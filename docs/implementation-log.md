@@ -89,3 +89,26 @@ Append one section per commit. Each section must record the intent, changed area
 **Next**
 
 - Request approval if the branch should be pushed to `origin/feat/neoforge-mvp-bootstrap`
+
+## 2026-06-27 - Live world sampling and vanilla-style shading
+
+**Purpose**
+
+- Replace the bootstrap tile pattern with live world block sampling that tracks vanilla map shading more closely
+
+**Changes**
+
+- Added immutable sampled metatile buffers plus a pluggable world snapshot provider interface
+- Implemented a server-thread snapshot provider that samples only already-loaded world columns, keeps missing chunks pending, and applies vanilla-style fluid handling
+- Replaced the placeholder tile renderer with a vanilla-style palette and brightness renderer, then rasterized full metatiles before slicing leaf tiles so shading stays continuous across tile boundaries
+- Wired the runtime bootstrap and test runtime entry points to consume snapshot providers instead of deterministic placeholder tiles
+- Added focused renderer and HTTP contract tests that verify shading rules and pending-to-ready tile transitions
+
+**Verification**
+
+- `./gradlew test --tests "com.liedowncraft.cartography.render.VanillaMapTileRendererTest" --tests "com.liedowncraft.cartography.web.CartographyHttpContractTest"`
+- `./gradlew test`
+
+**Next**
+
+- Validate the in-game visual result against a live world save and tune palette/shading edge cases if the map diverges from vanilla expectations

@@ -1,5 +1,7 @@
 package com.liedowncraft.cartography.bootstrap;
 
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -14,8 +16,11 @@ import com.liedowncraft.cartography.core.MetatileJob;
 import com.liedowncraft.cartography.core.TileCoordinate;
 import com.liedowncraft.cartography.core.TileMath;
 import com.liedowncraft.cartography.core.TilesetVersionCalculator;
-import com.liedowncraft.cartography.render.PatternTileRenderer;
+import com.liedowncraft.cartography.render.VanillaMapTileRenderer;
 import com.liedowncraft.cartography.render.TileImageCodec;
+import com.liedowncraft.cartography.snapshot.MainThreadWorldSnapshotProvider;
+import com.liedowncraft.cartography.snapshot.SampledMapBuffer;
+import com.liedowncraft.cartography.snapshot.WorldSnapshotProvider;
 import com.liedowncraft.cartography.scheduler.RenderScheduler;
 import com.liedowncraft.cartography.storage.FileSystemTileStore;
 import com.liedowncraft.cartography.storage.StoredTile;
@@ -25,22 +30,30 @@ import com.liedowncraft.cartography.web.MapManifest;
 import com.liedowncraft.cartography.web.PlayerMarker;
 import com.liedowncraft.cartography.web.TileResponse;
 
+import net.minecraft.server.MinecraftServer;
+
 public final class CartographyRuntime implements AutoCloseable {
     private final CartographySettings settings;
     private final String tilesetVersion;
     private final FileSystemTileStore tileStore;
-    private final PatternTileRenderer renderer;
+    private final VanillaMapTileRenderer renderer;
+    private final WorldSnapshotProvider snapshotProvider;
     private final byte[] pendingTile;
     private final String pendingTileMimeType;
     private final RenderScheduler scheduler;
     private final CartographyHttpServer httpServer;
     private final ConcurrentMap<String, PlayerMarker> markers = new ConcurrentHashMap<>();
 
-    public CartographyRuntime(CartographySettings settings) throws IOException {
+    public CartographyRuntime(CartographySettings settings, MinecraftServer server) throws IOException {
+        this(settings, new MainThreadWorldSnapshotProvider(server));
+    }
+
+    public CartographyRuntime(CartographySettings settings, WorldSnapshotProvider snapshotProvider) throws IOException {
         this.settings = settings;
         this.tilesetVersion = TilesetVersionCalculator.calculate(settings.renderer());
         this.tileStore = new FileSystemTileStore(settings.tileRoot());
-        this.renderer = new PatternTileRenderer();
+        this.renderer = new VanillaMapTileRenderer();
+        this.snapshotProvider = snapshotProvider;
         this.pendingTile = renderer.renderPendingTile(settings.renderer());
         this.pendingTileMimeType = TileImageCodec.sniffMimeType(pendingTile);
         this.scheduler = new RenderScheduler(settings.scheduler());
@@ -48,7 +61,13 @@ public final class CartographyRuntime implements AutoCloseable {
     }
 
     public static CartographyRuntime startForTests(CartographySettings settings) throws IOException {
-        CartographyRuntime runtime = new CartographyRuntime(settings);
+        CartographyRuntime runtime = new CartographyRuntime(settings, unsupportedSnapshotProvider());
+        runtime.start();
+        return runtime;
+    }
+
+    public static CartographyRuntime startForTests(CartographySettings settings, WorldSnapshotProvider snapshotProvider) throws IOException {
+        CartographyRuntime runtime = new CartographyRuntime(settings, snapshotProvider);
         runtime.start();
         return runtime;
     }
@@ -151,8 +170,13 @@ public final class CartographyRuntime implements AutoCloseable {
     }
 
     private void renderJob(MetatileJob job) throws IOException {
+        SampledMapBuffer metatileSnapshot = snapshotProvider.capture(job, settings.renderer());
+        BufferedImage metatileImage = renderer.renderImage(metatileSnapshot);
+        int tileSize = settings.renderer().tileSize();
         for (TileCoordinate tile : job.tiles()) {
-            byte[] bytes = renderer.renderTile(tile, settings.renderer());
+            int tileOffsetX = (tile.x() - job.startX()) * tileSize;
+            int tileOffsetY = (tile.y() - job.startY()) * tileSize;
+            byte[] bytes = renderer.encodeImage(copyTileImage(metatileImage, tileOffsetX, tileOffsetY, tileSize));
             tileStore.write(job.tilesetVersion(), tile, bytes);
             invalidateAncestors(tile);
         }
@@ -162,5 +186,32 @@ public final class CartographyRuntime implements AutoCloseable {
         for (TileCoordinate ancestor : TileMath.ancestorChain(tile, settings.renderer().minZoom())) {
             tileStore.delete(tilesetVersion, ancestor);
         }
+    }
+
+    private static WorldSnapshotProvider unsupportedSnapshotProvider() {
+        return (job, profile) -> {
+            throw new UnsupportedOperationException("No world snapshot provider configured for this test runtime");
+        };
+    }
+
+    private BufferedImage copyTileImage(BufferedImage metatileImage, int tileOffsetX, int tileOffsetY, int tileSize) {
+        BufferedImage tileImage = new BufferedImage(tileSize, tileSize, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = tileImage.createGraphics();
+        try {
+            graphics.drawImage(
+                    metatileImage,
+                    0,
+                    0,
+                    tileSize,
+                    tileSize,
+                    tileOffsetX,
+                    tileOffsetY,
+                    tileOffsetX + tileSize,
+                    tileOffsetY + tileSize,
+                    null);
+        } finally {
+            graphics.dispose();
+        }
+        return tileImage;
     }
 }

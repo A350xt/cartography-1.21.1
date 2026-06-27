@@ -33,7 +33,7 @@ public final class Cartography {
         }
 
         try {
-            runtime = new CartographyRuntime(Config.settings());
+            runtime = new CartographyRuntime(Config.settings(), event.getServer());
             runtime.start();
             LOGGER.info("Cartography embedded web server started on {}", runtime.baseUri());
         } catch (Exception exception) {
