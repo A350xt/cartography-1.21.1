@@ -271,7 +271,8 @@ public final class CartographyRuntime implements AutoCloseable {
                 tileCacheMisses.get(),
                 lastSnapshotMillis,
                 lastRenderMillis,
-                lastTileWriteMillis);
+                lastTileWriteMillis,
+                scheduler.lastFailure());
     }
 
     /** Records a dirty chunk; it is debounced and only becomes a render job in {@link #drainDirtyChunks}. */

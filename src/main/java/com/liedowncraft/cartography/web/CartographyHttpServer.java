@@ -289,6 +289,7 @@ public final class CartographyHttpServer implements AutoCloseable {
                 .field("snapshotTimeMs", status.lastSnapshotMillis())
                 .field("metatileRenderMs", status.lastRenderMillis())
                 .field("tileWriteLatencyMs", status.lastTileWriteMillis())
+                .field("lastFailure", status.lastFailure())
                 .endObject()
                 .toString();
     }

@@ -86,9 +86,15 @@ public final class MainThreadWorldSnapshotProvider implements WorldSnapshotProvi
         return sampleOffThread(levelSnapshot, buffer, grid, job.zoom(), originBlockX, originBlockZ, totalPixels);
     }
 
-    /** Blocks spanned by {@code pixelCount} pixels at {@code zoom}, at least one per pixel. */
+    /**
+     * Blocks spanned by {@code pixelCount} pixels at {@code zoom}.
+     *
+     * <p>Derived from the pixel lattice, so it stays correct at sub-block resolution: at two pixels
+     * per block, 260 pixels span 130 blocks, not 260. Assuming a block per pixel there would make
+     * every job demand twice the chunks it needs, and the extra ones are usually not loaded.
+     */
     private static int blocksBetweenPixels(TileGrid grid, int zoom, int pixelCount) {
-        return Math.max(pixelCount, grid.firstBlockOfPixel(zoom, pixelCount));
+        return Math.max(1, grid.firstBlockOfPixel(zoom, pixelCount));
     }
 
     /** Copies the chunks the metatile needs. Runs on the server thread and does no per-pixel work. */

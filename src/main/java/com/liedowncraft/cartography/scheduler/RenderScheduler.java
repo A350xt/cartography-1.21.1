@@ -41,6 +41,7 @@ public final class RenderScheduler implements Closeable {
 
     private volatile double currentTps = 20.0D;
     private volatile boolean paused;
+    private volatile String lastFailure = "";
 
     public RenderScheduler(CartographySettings.SchedulerSettings settings) {
         this.settings = settings;
@@ -107,6 +108,24 @@ public final class RenderScheduler implements Closeable {
         return refreshedAncestors.get();
     }
 
+    /** Most recent render failure, for the health endpoint. Empty until something fails. */
+    public String lastFailure() {
+        return lastFailure;
+    }
+
+    /**
+     * Records why a job failed so {@code /healthz} can report it.
+     *
+     * <p>No logging here on purpose: this class stays free of both Minecraft and logging
+     * dependencies so it can be unit tested without them, and a failing job is an expected event
+     * (an unloaded chunk) that would otherwise spam the server log.
+     */
+    private void recordFailure(MetatileJob job, Exception exception) {
+        String summary = exception.getClass().getSimpleName()
+                + ": " + (exception.getMessage() == null ? "(no message)" : exception.getMessage());
+        lastFailure = job.dimension() + " z" + job.zoom() + " " + job.startX() + "," + job.startY() + " -> " + summary;
+    }
+
     public double currentTps() {
         return currentTps;
     }
@@ -135,9 +154,11 @@ public final class RenderScheduler implements Closeable {
                         handler.handle(job);
                         renderedJobs.incrementAndGet();
                     } catch (Exception exception) {
+                        // Leave the scheduler running. An unloaded chunk is the expected cause and the
+                        // next request re-queues the job, but the reason must still be visible, or a
+                        // genuinely broken renderer looks identical to a cold cache.
                         failedJobs.incrementAndGet();
-                        // Leave the scheduler running. An unloaded chunk is the common cause, and the
-                        // next tile request or dirty event re-queues the job.
+                        recordFailure(job, exception);
                     } finally {
                         queuedJobs.remove(job);
                     }

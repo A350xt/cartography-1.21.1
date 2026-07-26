@@ -161,12 +161,49 @@ Correctness:
 - `npm run typecheck` — clean
 - `./gradlew clean build` — jar contains `web/index.html`, `web/assets/`, and the mixin class
 
-**Not verified**
+**Live server verification**
 
-- No live server run. The mixin is confirmed to compile and package but has not been observed transforming `LevelChunk` at runtime, and rendered tiles have not been compared against an in-game map item. Both need a server launch, which requires accepting the Mojang EULA
-- The performance cost of injecting into `LevelChunk#setBlockState` is reasoned from call-site density, not profiled
+Ran a dedicated NeoForge 1.21.1 server against a generated world (EULA accepted on the user's
+explicit instruction) and drove it over HTTP and RCON.
+
+Confirmed working at runtime:
+
+- **Mixin applies.** The log shows `cartography.mixins.json:LevelChunkSetBlockStateMixin` injecting into
+  `LevelChunk#setBlockState`, with no mixin errors
+- **Dirty pipeline fires.** 123 block changes from `/setblock` and `/fill` collapsed into 4 dirty
+  chunks, which drained into render jobs and then to zero
+- **Tiles render from real world data.** A max-zoom tile came back as a 256x256 indexed PNG with a
+  34-entry palette, 13,253 bytes, `Cache-Control: public, max-age=31536000, immutable` and no pending
+  header. Timings: snapshot 107ms, render 27ms, write 39ms
+- **Shading matches vanilla exactly.** Every colour in the decoded tile is a vanilla map palette entry
+  at a vanilla brightness: PLANT at LOW/NORMAL/HIGH (slope shading) and WATER at LOW/NORMAL/HIGH
+  (depth shading), plus SAND at NORMAL
+- **Zoom pyramid builds by downsampling.** After the dirty re-render, 16 ancestors refreshed and tiles
+  exist at every zoom from 8 down to 0, decreasing in size as detail is lost (13,313 / 1,035 / 174
+  bytes at zoom 8 / 4 / 0)
+- **Pending contract, tileset versioning, world id persistence and tileset metadata** all behaved as
+  designed; changing `metatileSize` in the config produced a fresh tileset version
+
+Defect found only by the live run:
+
+- **Sub-block sampling requested twice the chunks it needed.** `blocksBetweenPixels` clamped to at
+  least one block per pixel, but at 2 pixels per block 260 pixels span 130 blocks, not 260. Every job
+  demanded a region twice as wide as required, and the surplus chunks were usually not loaded, so
+  every render failed with `SnapshotUnavailableException`. The health endpoint's `lastFailure` field,
+  added while debugging this, is what made it diagnosable
+
+**Still not verified**
+
+- Performance of the block-change hook under sustained bulk edits is not profiled. The smoke test
+  used a 121-block fill, which is far below a WorldEdit-scale operation
+- Only the overworld was exercised. The nether ceiling fallback and the end are untested at runtime
+- Transparent-structure compositing (the glass-roof case) is covered by unit tests but was not
+  reproduced in a live world
+- The adversarial self-review workflow failed with API errors before any reviewer returned, so those
+  six review dimensions remain uncovered
 
 **Next**
 
-- Run a dedicated server against a real save: confirm the mixin applies, tiles render, and shading matches a map item
-- Profile the block-change hook under bulk edits
+- Profile the block-change hook under a large WorldEdit-style operation
+- Exercise the nether and end at runtime
+- Re-run the adversarial review when the API is available
