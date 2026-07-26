@@ -192,15 +192,36 @@ Defect found only by the live run:
   every render failed with `SnapshotUnavailableException`. The health endpoint's `lastFailure` field,
   added while debugging this, is what made it diagnosable
 
+**Targeted verification of the riskiest areas**
+
+The adversarial review workflow was attempted twice and returned nothing usable both times: the
+first run failed with API errors before any reviewer responded, and the second was interrupted
+mid-flight. Its empty result is an absence of evidence, not a clean bill of health. The
+highest-risk properties were therefore checked directly instead.
+
+- **Metatile crop arithmetic.** Worked through every zoom for metatile sizes 1 and 4: the cropped
+  image is exactly `tileSize * metatileSize` in all cases, so tile slicing can never read out of
+  bounds
+- **Frontend and backend agree on tile addressing.** Compared `TileGrid.signedTileX` against the
+  TypeScript `blockToSignedTile` across every zoom and a spread of negative and positive
+  coordinates: zero mismatches. The OpenLayers-to-signed Y mapping is an involution, confirmed over
+  a range of rows. A disagreement here would silently shift the whole map by a tile
+- **Path traversal defences, empirically.** Compiled a probe that runs hostile URLs through the real
+  `TilePath.parse` and `FileSystemTileStore.pathFor`, then canonicalizes the result and checks
+  containment. Encoded traversal in every segment, Windows drive letters, null-byte suffixes and
+  multi-colon dimensions are all rejected; the legitimate URL resolves inside the root. Zero escapes
+- **Shared mutable state.** `observeRenderedTile` is synchronized, markers live in a
+  `ConcurrentHashMap` written only from the server tick, and the metrics fields are volatile
+  primitives whose staleness does not affect correctness
+
 **Still not verified**
 
 - Performance of the block-change hook under sustained bulk edits is not profiled. The smoke test
-  used a 121-block fill, which is far below a WorldEdit-scale operation
+  used a 121-block fill, far below a WorldEdit-scale operation
 - Only the overworld was exercised. The nether ceiling fallback and the end are untested at runtime
 - Transparent-structure compositing (the glass-roof case) is covered by unit tests but was not
   reproduced in a live world
-- The adversarial self-review workflow failed with API errors before any reviewer returned, so those
-  six review dimensions remain uncovered
+- No independent adversarial review has run against this code
 
 **Next**
 
