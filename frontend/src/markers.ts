@@ -6,7 +6,8 @@ interface MarkerPollerOptions {
   clearIntervalImpl?: (handle: number) => void;
 }
 
-const DEFAULT_MARKER_POLL_INTERVAL_MS = 2000;
+/** Used only when the server did not state an interval. */
+const FALLBACK_MARKER_POLL_INTERVAL_MS = 2000;
 
 export function createMarkerPoller(
   manifest: CartographyManifest,
@@ -30,14 +31,21 @@ export function createMarkerPoller(
 
   return {
     async start() {
+      // Markers default to off, and the server decides. Polling regardless would be a privacy leak
+      // as much as wasted traffic.
       if (manifest.markerMode === "off") {
         return;
       }
 
       await pollOnce();
+      // The server owns the cadence, since it also owns the publication delay policy.
+      const intervalMs = manifest.markerPollIntervalMs > 0
+        ? manifest.markerPollIntervalMs
+        : FALLBACK_MARKER_POLL_INTERVAL_MS;
       intervalHandle = setIntervalImpl(() => {
-        void pollOnce();
-      }, DEFAULT_MARKER_POLL_INTERVAL_MS);
+        // A failed poll must not stop the timer; the next tick retries.
+        void pollOnce().catch(() => undefined);
+      }, intervalMs);
     },
     stop() {
       if (intervalHandle !== undefined) {

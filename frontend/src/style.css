@@ -80,12 +80,27 @@ body {
 }
 
 .status-card {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
   padding: 12px 18px;
   font-family: "IBM Plex Mono", "Consolas", monospace;
 }
 
+.status-card p {
+  margin: 0;
+}
+
 #status-text[data-state="error"] {
   color: #9f2f2f;
+}
+
+/* Raw Minecraft coordinates under the cursor, tabular so digits do not jitter while panning. */
+.coordinates {
+  color: rgba(33, 23, 14, 0.68);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .map-frame {

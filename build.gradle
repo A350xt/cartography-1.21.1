@@ -196,6 +196,10 @@ test {
 
 def npmExecutable = org.gradle.internal.os.OperatingSystem.current().isWindows() ? 'npm.cmd' : 'npm'
 def frontendDir = layout.projectDirectory.dir('frontend')
+// The resource source directory is the root that gets flattened into the jar, so the bundle must be
+// synced into a "web" subdirectory of it. Pointing the source directory straight at "web" would
+// strip that prefix and the server, which reads resources under "web/", would find nothing.
+def generatedFrontendResourceRoot = layout.buildDirectory.dir('generated/frontend-resources/main')
 def generatedFrontendResources = layout.buildDirectory.dir('generated/frontend-resources/main/web')
 
 tasks.register('npmInstall', Exec) {
@@ -230,7 +234,7 @@ tasks.register('syncFrontendAssets', Sync) {
     onlyIf { frontendDir.asFile.exists() }
 }
 
-sourceSets.main.resources.srcDir generatedFrontendResources
+sourceSets.main.resources.srcDir generatedFrontendResourceRoot
 tasks.named('processResources').configure {
     dependsOn tasks.named('syncFrontendAssets')
 }

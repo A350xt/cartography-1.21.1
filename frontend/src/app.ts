@@ -1,5 +1,6 @@
 import Feature from "ol/Feature";
 import Map from "ol/Map";
+import type ImageTile from "ol/ImageTile";
 import View from "ol/View";
 import Point from "ol/geom/Point";
 import TileLayer from "ol/layer/Tile";
@@ -7,26 +8,40 @@ import VectorLayer from "ol/layer/Vector";
 import Projection from "ol/proj/Projection";
 import VectorSource from "ol/source/Vector";
 import XYZ from "ol/source/XYZ";
-import { Circle, Fill, Stroke, Style } from "ol/style";
+import TileGrid from "ol/tilegrid/TileGrid";
+import { Circle, Fill, Stroke, Style, Text } from "ol/style";
 
+import { blockToPixel, pixelToBlock, resolutions, signedExtent, toSignedTileY } from "./crs";
 import { loadManifest } from "./manifest";
 import { createMarkerPoller } from "./markers";
 import { buildTileUrl, loadTileIntoImage } from "./tileLoader";
 import type { CartographyManifest, PlayerMarker } from "./types";
 
-const markerStyle = new Style({
-  image: new Circle({
-    radius: 6,
-    fill: new Fill({ color: "#f3c969" }),
-    stroke: new Stroke({ color: "#2f2418", width: 2 }),
-  }),
-});
+// Keyed by label so panning does not rebuild an identical Style for every marker on every poll.
+// Note this is the global Map, not OpenLayers' Map imported above.
+const markerStyleCache = new globalThis.Map<string, Style>();
 
-const projection = new Projection({
-  code: "CARTOGRAPHY",
-  units: "pixels",
-  extent: [-1000000, -1000000, 1000000, 1000000],
-});
+function markerStyle(name: string): Style {
+  let style = markerStyleCache.get(name);
+  if (!style) {
+    style = new Style({
+      image: new Circle({
+        radius: 6,
+        fill: new Fill({ color: "#f3c969" }),
+        stroke: new Stroke({ color: "#2f2418", width: 2 }),
+      }),
+      text: new Text({
+        text: name,
+        offsetY: -14,
+        font: "12px system-ui, sans-serif",
+        fill: new Fill({ color: "#f6f3ec" }),
+        stroke: new Stroke({ color: "#1b1712", width: 3 }),
+      }),
+    });
+    markerStyleCache.set(name, style);
+  }
+  return style;
+}
 
 export async function bootstrapApp(root: HTMLElement): Promise<void> {
   root.innerHTML = `
@@ -45,6 +60,7 @@ export async function bootstrapApp(root: HTMLElement): Promise<void> {
       </header>
       <section class="status-card">
         <p id="status-text">Loading manifest...</p>
+        <p id="coordinate-readout" class="coordinates"></p>
       </section>
       <main class="map-frame">
         <div id="map"></div>
@@ -53,17 +69,18 @@ export async function bootstrapApp(root: HTMLElement): Promise<void> {
   `;
 
   const statusText = root.querySelector<HTMLElement>("#status-text");
+  const coordinateReadout = root.querySelector<HTMLElement>("#coordinate-readout");
   const dimensionSelect = root.querySelector<HTMLSelectElement>("#dimension-select");
   const mapElement = root.querySelector<HTMLElement>("#map");
 
-  if (!statusText || !dimensionSelect || !mapElement) {
+  if (!statusText || !coordinateReadout || !dimensionSelect || !mapElement) {
     throw new Error("Cartography app shell failed to initialize");
   }
 
   try {
     const manifest = await loadManifest();
     statusText.textContent = `Tileset ${manifest.tilesetVersion} ready`;
-    initializeMap(manifest, dimensionSelect, mapElement, statusText);
+    initializeMap(manifest, dimensionSelect, mapElement, statusText, coordinateReadout);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     statusText.textContent = `Manifest load failed: ${message}`;
@@ -76,7 +93,9 @@ function initializeMap(
   dimensionSelect: HTMLSelectElement,
   mapElement: HTMLElement,
   statusText: HTMLElement,
+  coordinateReadout: HTMLElement,
 ) {
+  const grid = manifest.tileGrid;
   let currentDimension = manifest.defaultDimension;
   let markerPoller: ReturnType<typeof createMarkerPoller> | undefined;
 
@@ -88,20 +107,35 @@ function initializeMap(
     dimensionSelect.append(option);
   }
 
+  // A custom projection in max-zoom pixel units. Minecraft coordinates are not geographic, so no
+  // built-in projection applies; declaring our own is what keeps features aligned with the basemap.
+  const extent = signedExtent(grid);
+  const projection = new Projection({
+    code: manifest.crs,
+    units: "pixels",
+    extent,
+  });
+
+  const tileGrid = new TileGrid({
+    // Origin is the tile-grid origin in pixel space, which is where signed tile (0,0) begins.
+    origin: [0, 0],
+    resolutions: resolutions(grid),
+    tileSize: grid.tileSize,
+  });
+
   const rasterSource = new XYZ({
-    minZoom: manifest.minZoom,
-    maxZoom: manifest.maxZoom,
     projection,
+    tileGrid,
+    // Tiles are already versioned by URL, so the browser cache is safe and correct.
+    cacheSize: 512,
     tileUrlFunction: (tileCoord) => {
-      const [z, x, invertedY] = tileCoord;
-      const y = -invertedY - 1;
-      return buildTileUrl(manifest, currentDimension, z, x, y);
+      const [z, x, y] = tileCoord;
+      return buildTileUrl(manifest, currentDimension, z, x, toSignedTileY(y));
     },
     tileLoadFunction: (tile, src) => {
-      const image = tile.getImage() as HTMLImageElement;
-      statusText.textContent = `Loading ${currentDimension} tiles...`;
-      void loadTileIntoImage(image, src, { manifest }).then(() => {
-        statusText.textContent = `Browsing ${currentDimension}`;
+      const image = (tile as ImageTile).getImage() as HTMLImageElement;
+      void loadTileIntoImage(image, src, { manifest }).catch(() => {
+        statusText.textContent = `Tile request failed for ${currentDimension}`;
       });
     },
   });
@@ -109,26 +143,27 @@ function initializeMap(
   const markerSource = new VectorSource();
   const markerLayer = new VectorLayer({
     source: markerSource,
-    style: markerStyle,
+    style: (feature) => markerStyle(String(feature.get("name") ?? "")),
     visible: manifest.markerMode !== "off",
   });
 
   const map = new Map({
     target: mapElement,
-    layers: [
-      new TileLayer({
-        source: rasterSource,
-      }),
-      markerLayer,
-    ],
+    layers: [new TileLayer({ source: rasterSource }), markerLayer],
     view: new View({
       projection,
-      center: [0, 0],
-      zoom: manifest.maxZoom,
-      minZoom: manifest.minZoom,
-      maxZoom: manifest.maxZoom,
-      multiWorld: true,
+      extent,
+      center: blockToPixel(grid, grid.tileOriginX, grid.tileOriginZ),
+      zoom: grid.maxZoom - grid.minZoom,
+      resolutions: resolutions(grid),
     }),
+  });
+
+  // Report the cursor position in raw Minecraft coordinates, which is the only coordinate space a
+  // player can act on.
+  map.on("pointermove", (event) => {
+    const [blockX, blockZ] = pixelToBlock(grid, event.coordinate[0], event.coordinate[1]);
+    coordinateReadout.textContent = `X ${Math.floor(blockX)}  Z ${Math.floor(blockZ)}`;
   });
 
   const renderMarkers = (markers: PlayerMarker[]) => {
@@ -136,7 +171,7 @@ function initializeMap(
     for (const marker of markers) {
       markerSource.addFeature(
         new Feature({
-          geometry: new Point([marker.x, marker.z]),
+          geometry: new Point(blockToPixel(grid, marker.x, marker.z)),
           name: marker.name,
         }),
       );
@@ -158,5 +193,5 @@ function initializeMap(
     void restartMarkerPolling();
   });
 
-  map.renderSync();
+  statusText.textContent = `Browsing ${currentDimension}`;
 }

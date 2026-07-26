@@ -75,6 +75,13 @@ public final class VanillaMapPalette {
     private VanillaMapPalette() {
     }
 
+    /**
+     * Packs a map colour and brightness into true ARGB for {@link java.awt.image.BufferedImage}.
+     *
+     * <p>Deliberately NOT a copy of vanilla's {@code MapColor#calculateRGBColor}: despite its name
+     * that method emits ABGR, because it feeds {@code NativeImage.setPixelRGBA}, which is
+     * little-endian. Mirroring it here would swap red and blue in every written tile.
+     */
     public static int argb(int mapColorId, Brightness brightness) {
         if (mapColorId <= 0 || mapColorId >= BASE_COLORS.length) {
             return 0;

@@ -112,3 +112,61 @@ Append one section per commit. Each section must record the intent, changed area
 **Next**
 
 - Validate the in-game visual result against a live world save and tune palette/shading edge cases if the map diverges from vanilla expectations
+
+## 2026-07-26 - Align the implementation with the v2.0 technical plan
+
+**Purpose**
+
+- Bring the MVP in line with `cartography_v2_technical_plan-1.pdf`, whose hard invariants the earlier slices did not yet satisfy
+
+**Changes**
+
+- Added the canonical coordinate model: `TileGrid` (tile origin, pixels per block, signed tiles), `TileGridNormalization` for published tilesets, and the round-trip tests the plan lists as mandatory
+- Reworked `tilesetVersion` to hash world, dimension, profile, resource pack, material table, renderer, tile grid, format and quality, and moved it into the tile path as `/tiles/raster/{world}/{dimension}/{profile}/{tilesetVersion}/{z}/x{x}/y{y}.png`
+- Replaced delete-only ancestor invalidation with a real downsample pass: `AncestorDirtySet` pops deepest-first and `TileDownsampler` rebuilds parents from children on a budgeted idle pass, so low zoom can now render at all
+- Added metatile padding and crop so the first row of every metatile is shaded against real terrain instead of producing a seam
+- Made tile writes atomic (temp, fsync, rename) and added tileset `metadata.json`
+- Replaced map-colour-driven surface detection with `SurfaceClassifier`, which classifies by geometry and occlusion; this is what stops glass roofs being seen through, and it generalizes to modded blocks
+- Split world sampling: the server thread only copies paletted containers (`ChunkColumnSnapshot`), and all per-pixel work moved to the render worker. Reading live chunks off-thread could crash the server on a palette resize
+- Wired the previously dead pipeline: a `LevelChunk#setBlockState` mixin observes every block change, `ChunkEvent.Load` catches new terrain, `ServerTickEvent.Post` drives TPS and drains the debounce, and markers publish through `LocationPrivacyPolicy`
+- Added TPS hysteresis (pause below, resume above) so workers cannot flap at the threshold
+- Switched tiles to indexed PNG: stock Java has no WebP writer, and measurement put lossy WebP q85 45% larger than indexed PNG on this content
+- Rebuilt the frontend on a manifest-derived OpenLayers `TileGrid` and `Projection`, so markers in block coordinates land on the correct pixels
+- Added the observability metrics from plan section 15.2 to `/healthz`
+
+**Defects found and fixed while verifying**
+
+Packaging and build:
+
+- The frontend bundle was being packaged at `assets/` instead of `web/`, and `index.html` was missing from the jar entirely, so no bundled asset was reachable at runtime. The resource source directory pointed at the bundle folder itself, which stripped the `web/` prefix. Added `StaticAssetContractTest` to pin the serving contract
+- `vite build` does not type-check, and two real type errors were hiding in `app.ts`. `npm run build` now runs `tsc --noEmit` first
+- `loadTileIntoImage` bound `URL.revokeObjectURL` eagerly, so a failed tile request threw a binding error instead of surfacing its own
+
+Security:
+
+- **Path traversal via the tile extension.** `TilePath.parse` validated the extension *before* URL-decoding it, so `y0.%2e%2e%2fpng` decoded to `../png` and escaped the tile store root. Replaced pattern blocklisting with decode-then-allowlist validation on every segment. `TilePathTest` now covers encoded traversal
+- The static asset handler had the same decode-order flaw. It now decodes first and allowlists each path segment
+- **Unauthenticated denial of service.** A miss on a low-zoom tile recursed over the entire pyramid beneath it: one request for a zoom-0 tile performed roughly 87,000 filesystem stats on an HTTP thread. Replaced with a breadth-first expansion capped at 256 tiles; `MissExpansionBoundTest` pins the bound
+
+Correctness:
+
+- **`blocksPerPixel` was zero at max zoom.** The default profile renders 2 pixels per block, so a 256px tile spans 128 blocks and integer division gave `128 / 256 == 0`. Every max-zoom sample footprint would have collapsed. Block extents are now derived from the pixel lattice (`firstBlockOfPixel` / `blockSpanOfPixel`), which is exact whether a pixel covers many blocks or several pixels share one. `TileGridPixelMappingTest` pins the lattice at every zoom
+- The renderer keyed water depth shading on `SurfaceKind.FLUID_SURFACE`, which would have shaded lava as deep water. Vanilla gates on the dominant colour being water; corrected to match
+- The scheduler defaulted to running regardless of the configured TPS floor, so a scheduler configured to pause below an unreachable threshold started unpaused
+
+**Verification**
+
+- `./gradlew test` — 94 backend tests, 0 failures
+- `npx vitest run` — 23 frontend tests, 0 failures
+- `npm run typecheck` — clean
+- `./gradlew clean build` — jar contains `web/index.html`, `web/assets/`, and the mixin class
+
+**Not verified**
+
+- No live server run. The mixin is confirmed to compile and package but has not been observed transforming `LevelChunk` at runtime, and rendered tiles have not been compared against an in-game map item. Both need a server launch, which requires accepting the Mojang EULA
+- The performance cost of injecting into `LevelChunk#setBlockState` is reasoned from call-site density, not profiled
+
+**Next**
+
+- Run a dedicated server against a real save: confirm the mixin applies, tiles render, and shading matches a map item
+- Profile the block-change hook under bulk edits

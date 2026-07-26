@@ -2,7 +2,9 @@
   "required": true,
   "package": "com.liedowncraft.cartography.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": [],
+  "mixins": [
+    "LevelChunkSetBlockStateMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   },
